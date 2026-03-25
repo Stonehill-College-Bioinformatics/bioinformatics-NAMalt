@@ -25,6 +25,32 @@ folder <- system.file(package="ShortRead", "extdata/E-MTAB-1147")
 rqc(path = folder, pattern = ".fastq.gz")
 ```
 
+HERE IS THE CODE I USED TO FIX THE INSTALL ERRORS!!!
+```{r}
+install.packages("BiocManager")
+BiocManager::install("ShortRead")
+```
+
+```{r}
+BiocManager::install("Rqc")
+```
+
+```{r}
+install.packages("png")
+```
+
+```{r}
+BiocManager::install("ShortRead", dependencies = TRUE)
+```
+
+```{r}
+library(ShortRead)
+library(Rqc)
+```
+
+This seemed to fix my issue, I had was having some dependencie problems but I have no idea why. 
+
+
 # Bioconductor
 
 Bioconductor and Biostrings are especially powerful tools to examine fasta files in R.  In this section, we'll learn some tools to manipulate them.  
@@ -97,6 +123,48 @@ a. Look at the 'Cycle-specific Base Call Proportion' rqc file.  What is the rati
 
 b. Look at the 'Cycle specific Quality Distribution'. What is the typial quality of cycles 1-10?  What is the typical quality of cycles 65-75?  Based on your knowledge of DNA-sequencing, propose a hypothesis for why the cycles have a different quality
 
+```{r}
+
+# Get the folder path
+folder <- system.file(package = "ShortRead", "extdata/E-MTAB-1147")
+
+# Find the files yourself, then pass them directly
+files <- list.files(folder, pattern = ".fastq.gz", full.names = TRUE)
+files  # run this to confirm files are found
+
+# Pass file paths directly to rqcQA
+rqcResult <- rqcQA(files)
+
+# Confirm it worked
+class(rqcResult)
+```
+
+
+```{r}
+# --- 1a: Cycle-specific Base Call Proportion ---
+# Extract the per-cycle base frequency table
+base_freq <- rqcCycleBaseCallsPlot(rqcResult)   # produces the plot
+base_data  <- rqcCycleBaseCallsCalc(rqcResult)  # gives you the raw numbers
+
+# Look at cycles 1-10
+subset(base_data, cycle >= 1 & cycle <= 10)
+
+# Look at cycles 65-75
+subset(base_data, cycle >= 65 & cycle <= 75)
+
+# --- 1b: Cycle-specific Quality Distribution ---
+# Extract per-cycle quality scores
+qual_data <- rqcCycleQualityCalc(rqcResult)     # raw numbers
+rqcCycleQualityPlot(rqcResult)                   # produces the plot
+
+# Look at cycles 1-10
+subset(qual_data, cycle >= 1 & cycle <= 10)
+
+# Look at cycles 65-75
+subset(qual_data, cycle >= 65 & cycle <= 75)
+```
+
+
 # Homework Question 2: Loading a File, Reverse Complements
 
 For one of the research projects, we will be studying a specific protein coding site of hcmv associated with the transition of hcmv from latent to active. Align the following two queries to any genome in the reference file. Which one successfully aligns? What does that mean about the site of interest?
@@ -104,6 +172,28 @@ For one of the research projects, we will be studying a specific protein coding 
 ```{r}
 query <- readDNAStringSet("hcmv15-hcmv1b-1.fasta")
 reversecompquery <- reverseComplement(query)
+
+# Load the reference genome (HAN16) and strip any alignment gaps
+ref_raw <- readDNAStringSet("hcmvgenome.fasta")
+ref     <- DNAString(gsub("-", "", as.character(ref_raw[[1]])))
+
+# Convert both query versions to DNAString for matchPattern
+fwd_query <- DNAString(toupper(as.character(query[[1]])))
+rc_query  <- DNAString(toupper(as.character(reversecompquery[[1]])))
+
+# --- Try aligning the FORWARD query ---
+fwd_hits <- matchPattern(fwd_query, ref, max.mismatch = 50)
+cat("Forward query hits:", length(fwd_hits), "\n")
+
+# --- Try aligning the REVERSE COMPLEMENT ---
+rc_hits <- matchPattern(rc_query, ref, max.mismatch = 50)
+cat("Reverse complement hits:", length(rc_hits), "\n")
+
+# If the RC aligned, show where
+if (length(rc_hits) > 0) {
+  cat("RC alignment position:", start(rc_hits[1]), "to", end(rc_hits[1]), "\n")
+}
+
 ```
 
 # Homework Question 3: Isolating a Site
