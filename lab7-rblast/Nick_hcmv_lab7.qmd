@@ -123,19 +123,16 @@ a. Look at the 'Cycle-specific Base Call Proportion' rqc file.  What is the rati
 
 b. Look at the 'Cycle specific Quality Distribution'. What is the typial quality of cycles 1-10?  What is the typical quality of cycles 65-75?  Based on your knowledge of DNA-sequencing, propose a hypothesis for why the cycles have a different quality
 
+More issues with the files not readin correctly b/c of dependecies, this code fixes it on my laptop
 ```{r}
 
-# Get the folder path
 folder <- system.file(package = "ShortRead", "extdata/E-MTAB-1147")
 
-# Find the files yourself, then pass them directly
 files <- list.files(folder, pattern = ".fastq.gz", full.names = TRUE)
 files  # run this to confirm files are found
 
-# Pass file paths directly to rqcQA
 rqcResult <- rqcQA(files)
 
-# Confirm it worked
 class(rqcResult)
 ```
 
@@ -143,8 +140,8 @@ class(rqcResult)
 ```{r}
 # --- 1a: Cycle-specific Base Call Proportion ---
 # Extract the per-cycle base frequency table
-base_freq <- rqcCycleBaseCallsPlot(rqcResult)   # produces the plot
-base_data  <- rqcCycleBaseCallsCalc(rqcResult)  # gives you the raw numbers
+base_freq <- rqcCycleBaseCallsPlot(rqcResult)   # plot
+base_data  <- rqcCycleBaseCallsCalc(rqcResult)  # numbers
 
 # Look at cycles 1-10
 subset(base_data, cycle >= 1 & cycle <= 10)
@@ -154,8 +151,8 @@ subset(base_data, cycle >= 65 & cycle <= 75)
 
 # --- 1b: Cycle-specific Quality Distribution ---
 # Extract per-cycle quality scores
-qual_data <- rqcCycleQualityCalc(rqcResult)     # raw numbers
-rqcCycleQualityPlot(rqcResult)                   # produces the plot
+qual_data <- rqcCycleQualityCalc(rqcResult) # numbers
+rqcCycleQualityPlot(rqcResult)              # plot
 
 # Look at cycles 1-10
 subset(qual_data, cycle >= 1 & cycle <= 10)
@@ -163,7 +160,18 @@ subset(qual_data, cycle >= 1 & cycle <= 10)
 # Look at cycles 65-75
 subset(qual_data, cycle >= 65 & cycle <= 75)
 ```
+a. Base call proportions hypothesis:
 
+Cycles 1–10: Here there is a lower A/C/G/T ratios, this is due to the hexamer priming bias. The hexamers used in library prep don't bind uniformly across all sequence contexts, so the first 10ish cycles over-represent certain bases depending on which hexamer combinations prime most efficiently.
+
+Cycles 65–75: Here the ratios are more balanced, since its past the priming-biased region and reading the real sequence.
+
+
+b. Quality distribution hypothesis:
+
+Cycles 1–10: These cycles have a higher ratio than those in the base call proportions. 
+
+Cycles 65–75: In these cycles the ratio is too high. This is due to phasing and pre-phasing errors accumulating over time. Some strands incorporate bases slightly early (pre-phasing) or late (phasing), causing the fluorescent signal per cluster to become increasingly mixed and harder to call correctly.
 
 # Homework Question 2: Loading a File, Reverse Complements
 
@@ -177,25 +185,81 @@ reversecompquery <- reverseComplement(query)
 ref_raw <- readDNAStringSet("hcmvgenome.fasta")
 ref     <- DNAString(gsub("-", "", as.character(ref_raw[[1]])))
 
-# Convert both query versions to DNAString for matchPattern
+# Convert both query versions to DNAString
 fwd_query <- DNAString(toupper(as.character(query[[1]])))
 rc_query  <- DNAString(toupper(as.character(reversecompquery[[1]])))
 
-# --- Try aligning the FORWARD query ---
+# Foward Align
 fwd_hits <- matchPattern(fwd_query, ref, max.mismatch = 50)
 cat("Forward query hits:", length(fwd_hits), "\n")
 
-# --- Try aligning the REVERSE COMPLEMENT ---
+# Reverse align
 rc_hits <- matchPattern(rc_query, ref, max.mismatch = 50)
 cat("Reverse complement hits:", length(rc_hits), "\n")
 
-# If the RC aligned, show where
+# Show where RC aligned
 if (length(rc_hits) > 0) {
   cat("RC alignment position:", start(rc_hits[1]), "to", end(rc_hits[1]), "\n")
 }
 
 ```
 
+The reverse compliment does exist since it has 1 hit, the site of interest,positions 187,075–191,699, is a minus-strand encoded gene.
+
 # Homework Question 3: Isolating a Site
 
 Isolate the 'hcmv15-hcmv1b-1.fasta' site in all 259 seqs. Your final result should be a DNAString set of 259 sequences about 4-5 kb long.  
+
+```{r}
+ref_raw <- readDNAStringSet("hcmvgenome.fasta")
+all_seqs <- readDNAStringSet("hcmvgenome.fasta")
+query <- readDNAStringSet("hcmv15-hcmv1b-1.fasta")
+ref <- DNAString(gsub("-", "", as.character(ref_raw[[1]])))
+reversecompquery <- reverseComplement(query)
+rc_query  <- DNAString(toupper(as.character(reversecompquery[[1]])))
+rc_hits <- matchPattern(rc_query, ref, max.mismatch = 50)
+
+# Load all 259 aligned sequences
+all_seqs <- readDNAStringSet("hcmvgenome.fasta")
+
+# Map the gap-stripped hit position back to alignment column coordinates
+# ref_raw[[1]] is the reference WITH gaps; ref was gap-stripped for matching
+ref_chars <- strsplit(as.character(ref_raw[[1]]), "")[[1]]
+
+# For each alignment column, track the cumulative ungapped position
+ungapped_pos <- cumsum(ref_chars != "-")
+
+# Find which alignment columns correspond to the RC hit
+site_start <- start(rc_hits[1])
+site_end   <- end(rc_hits[1])
+aln_cols   <- which(ungapped_pos >= site_start & ungapped_pos <= site_end)
+
+# Expand window to ~4-5 kb (2000 bp either side of the hit)
+win_start_aln <- max(1, aln_cols[1] - 2000)
+win_end_aln   <- min(length(ref_chars), tail(aln_cols, 1) + 2000)
+
+# Extract that alignment window from all 259 sequences
+isolated_sites <- subseq(all_seqs, win_start_aln, win_end_aln)
+
+# Strip alignment gaps so each sequence is clean
+isolated_sites <- DNAStringSet(gsub("-", "", as.character(isolated_sites)))
+names(isolated_sites) <- names(all_seqs)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
